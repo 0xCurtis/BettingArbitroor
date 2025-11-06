@@ -34,17 +34,17 @@ def test_normalize_kalshi_market():
     market = {
         "event_ticker": "TRUMP24",
         "title": "Will Trump win 2024 election?",
-        "yes_bid": 0.60,
-        "yes_ask": 0.65,
-        "no_bid": 0.35,
-        "no_ask": 0.40,
+        "yes_bid": 60,
+        "yes_ask": 65,
+        "no_bid": 35,
+        "no_ask": 40,
     }
 
     result = scraper.normalize_market(market)
     assert result is not None
     assert result["event"] == "Will Trump win 2024 election?"
-    assert result["yes_price"] == 0.625
-    assert result["no_price"] == 0.375
+    assert abs(result["yes_price"] - 0.625) < 0.0001
+    assert abs(result["no_price"] - 0.375) < 0.0001
     assert result["ticker"] == "TRUMP24"
     assert result["source"] == "Kalshi"
 
