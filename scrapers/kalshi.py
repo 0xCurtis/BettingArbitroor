@@ -23,15 +23,21 @@ class KalshiScraper(BaseMarketScraper):
             if yes_bid <= 0 or yes_ask <= 0 or no_bid <= 0 or no_ask <= 0:
                 return None
 
-            yes_mid = (yes_bid + yes_ask) / 2
-            no_mid = (no_bid + no_ask) / 2
+            yes_mid_cents = (yes_bid + yes_ask) / 2
+            no_mid_cents = (no_bid + no_ask) / 2
+
+            yes_price = yes_mid_cents / 100.0
+            no_price = no_mid_cents / 100.0
+
+            url = f"https://kalshi.com/markets/{event_ticker}" if event_ticker else ""
 
             return {
                 "event": title or event_ticker,
-                "yes_price": yes_mid,
-                "no_price": no_mid,
+                "yes_price": yes_price,
+                "no_price": no_price,
                 "ticker": event_ticker,
                 "source": self.name,
+                "url": url,
             }
         except (KeyError, ValueError, TypeError) as e:
             error_logger.log_error(e, context=f"normalizing {self.name} market")

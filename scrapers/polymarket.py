@@ -57,11 +57,21 @@ class PolymarketScraper(BaseMarketScraper):
             if yes_price <= 0 or no_price <= 0:
                 return None
 
+            slug = market.get("slug", "")
+            market_id = market.get("id", "")
+            if slug:
+                url = f"https://polymarket.com/event/{slug}"
+            elif market_id:
+                url = f"https://polymarket.com/market/{market_id}"
+            else:
+                url = ""
+
             return {
                 "event": question,
                 "yes_price": yes_price,
                 "no_price": no_price,
                 "source": self.name,
+                "url": url,
             }
         except (KeyError, ValueError, TypeError, json.JSONDecodeError) as e:
             error_logger.log_error(e, context=f"normalizing {self.name} market")

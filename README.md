@@ -49,6 +49,10 @@ Check code quality with ruff:
 uv run ruff check .
 ```
 
+## Logging
+
+- You have 3 Logging sources available (Console, Telegram, Discord) by default Discord and Console are enabled.
+
 ## Notes
 
 - This tool only **detects** arbitrage opportunities; it does not execute trades
