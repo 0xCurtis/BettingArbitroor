@@ -1,0 +1,16 @@
+# Python Dumb things
+*.pyc
+__pycache__/
+.ruff_cache/
+.pytest_cache/
+.env
+.venv/
+uv.lock
+# Dumb things system-wide
+.vscode/
+.idea/
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
