@@ -28,13 +28,25 @@ class DiscordNotifier(BaseNotifier):
             sell_source = source1
             sell_price = price1
 
+        url1 = opportunity.get("url1", "")
+        url2 = opportunity.get("url2", "")
+
+        buy_url = url1 if buy_source == opportunity["source1"] else url2
+        sell_url = url2 if sell_source == opportunity["source2"] else url1
+
         _message = (
             f"🚨 **Arbitrage Detected**\n\n"
             f"**Event:** {event}\n"
-            f"**Buy on:** {buy_source} at {buy_price:.2f}\n"
-            f"**Sell on:** {sell_source} at {sell_price:.2f}\n"
-            f"**Spread:** {spread_pct:.2f}%"
+            f"**Buy on:** {buy_source} at {buy_price:.2f}"
         )
+        if buy_url:
+            _message += f"\n{buy_url}"
+
+        _message += f"\n**Sell on:** {sell_source} at {sell_price:.2f}"
+        if sell_url:
+            _message += f"\n{sell_url}"
+
+        _message += f"\n**Spread:** {spread_pct:.2f}%"
         try:
             requests.post(self.webhook_url, json={"content": _message}, timeout=5)
         except Exception:

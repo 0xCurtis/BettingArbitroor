@@ -6,7 +6,6 @@ from config import ARBITRAGE_THRESHOLD, FETCH_INTERVAL_SECONDS
 from logger import error_logger
 from notifiers.base import BaseNotifier
 from notifiers.console import ConsoleNotifier
-from notifiers.discord import DiscordNotifier
 from scrapers.base import BaseMarketScraper
 from scrapers.kalshi import KalshiScraper
 from scrapers.polymarket import PolymarketScraper
@@ -77,7 +76,7 @@ def main() -> None:
 
     notifiers = [
         ConsoleNotifier(),
-        DiscordNotifier(webhook_url="https://discord.com/api/webhooks/1435940084116361308/yB5TKeMHRV7TcXVh3_LY8UU9qqjrCvLcsey8fkL64A4UNK97caMIgLEP1qFt0YjXGEq1"),
+        # DiscordNotifier(webhook_url="https://discord.com/api/webhooks/1435940084116361308/yB5TKeMHRV7TcXVh3_LY8UU9qqjrCvLcsey8fkL64A4UNK97caMIgLEP1qFt0YjXGEq1"),
     ]
 
     bot = ArbitrageBot(scrapers, notifiers)

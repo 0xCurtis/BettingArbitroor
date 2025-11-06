@@ -36,12 +36,28 @@ class ArbitrageFinder:
                             spread = self.calculate_spread(price1, price2)
 
                             if spread > self.threshold:
+                                if price1 < price2:
+                                    odds_a = 1.0 / price1
+                                    odds_b = 1.0 / (1.0 - price2)
+                                    bet_direction1 = "YES"
+                                    bet_direction2 = "NO"
+                                else:
+                                    odds_a = 1.0 / price2
+                                    odds_b = 1.0 / (1.0 - price1)
+                                    bet_direction1 = "NO"
+                                    bet_direction2 = "YES"
+
+
                                 opportunities.append({
                                     "event": market1.get("event", ""),
                                     "source1": source1,
                                     "price1": price1,
+                                    "url1": market1.get("url", ""),
+                                    "bet_direction1": bet_direction1,
                                     "source2": source2,
                                     "price2": price2,
+                                    "url2": market2.get("url", ""),
+                                    "bet_direction2": bet_direction2,
                                     "spread": spread,
                                 })
 
@@ -59,5 +75,4 @@ class ArbitrageFinder:
             return False
 
         similarity = len(common_words) / max(len(event1_words), len(event2_words))
-        return similarity >= 0.3
-
+        return similarity >= 0.1

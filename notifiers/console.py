@@ -23,9 +23,19 @@ class ConsoleNotifier(BaseNotifier):
             sell_source = source1
             sell_price = price1
 
+        url1 = opportunity.get("url1", "")
+        url2 = opportunity.get("url2", "")
+
+        buy_url = url1 if buy_source == opportunity["source1"] else url2
+        sell_url = url2 if sell_source == opportunity["source2"] else url1
+
         print(f"\n🚨 Arbitrage detected: {event}")
         print(f"Buy on {buy_source} at {buy_price:.2f}")
+        if buy_url:
+            print(f"  URL: {buy_url}")
         print(f"Sell on {sell_source} at {sell_price:.2f}")
+        if sell_url:
+            print(f"  URL: {sell_url}")
         print(f"Spread: {spread_pct:.2f}%\n")
 
     def notify_status(self, message: str) -> None:
