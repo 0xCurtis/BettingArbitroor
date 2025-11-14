@@ -6,6 +6,8 @@ __pycache__/
 .env
 .venv/
 uv.lock
+*.db
+*.db-journal
 # Dumb things system-wide
 .vscode/
 .idea/
