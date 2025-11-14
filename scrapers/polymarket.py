@@ -3,7 +3,7 @@ from typing import Dict, List
 
 import requests
 
-from config import POLYMARKET_API_URL
+from config import POLYMARKET_API_URL, TARGET_MARKETS_PER_EXCHANGE
 from logger import error_logger
 from scrapers.base import BaseMarketScraper
 
@@ -11,6 +11,7 @@ from scrapers.base import BaseMarketScraper
 class PolymarketScraper(BaseMarketScraper):
     def __init__(self):
         super().__init__("Polymarket", POLYMARKET_API_URL)
+        self.target_markets = TARGET_MARKETS_PER_EXCHANGE
 
     def normalize_market(self, market: Dict) -> Dict | None:
         try:
@@ -57,14 +58,9 @@ class PolymarketScraper(BaseMarketScraper):
             if yes_price <= 0 or no_price <= 0:
                 return None
 
-            slug = market.get("slug", "")
             market_id = market.get("id", "")
-            if slug:
-                url = f"https://polymarket.com/event/{slug}"
-            elif market_id:
-                url = f"https://polymarket.com/market/{market_id}"
-            else:
-                url = ""
+            slug = market.get("events", {})[0].get("slug", "")
+            url = f"https://polymarket.com/event/{slug}"
 
             return {
                 "event": question,
@@ -77,11 +73,15 @@ class PolymarketScraper(BaseMarketScraper):
             error_logger.log_error(e, context=f"normalizing {self.name} market")
             return None
 
-    def fetch_markets(self) -> List[Dict]:
+    def _fetch_page(self, offset: int = 0, limit: int = 100) -> List[Dict]:
         try:
-            response = requests.get(self.api_url, timeout=self.timeout)
+            url = f"{self.api_url.split('?')[0]}?limit={limit}&closed=false&offset={offset}"
+            response = requests.get(url, timeout=self.timeout)
             response.raise_for_status()
             data = response.json()
+
+            if not isinstance(data, list):
+                return []
 
             markets = []
             for market in data:
@@ -91,6 +91,29 @@ class PolymarketScraper(BaseMarketScraper):
 
             return markets
         except (requests.RequestException, ValueError, KeyError) as e:
-            error_logger.log_error(e, context=f"fetching {self.name} markets")
+            error_logger.log_error(e, context=f"fetching {self.name} markets page")
             return []
+
+    def fetch_markets(self) -> List[Dict]:
+        all_markets = []
+        offset = 0
+        limit = 100
+        max_iterations = (self.target_markets // limit) + 10
+
+        for _ in range(max_iterations):
+            if len(all_markets) >= self.target_markets:
+                break
+
+            page_markets = self._fetch_page(offset=offset, limit=limit)
+
+            if not page_markets:
+                break
+
+            all_markets.extend(page_markets)
+            offset += limit
+
+            if len(page_markets) < limit:
+                break
+
+        return all_markets[:self.target_markets]
 
