@@ -31,6 +31,10 @@ class PolymarketScraper(BaseMarketScraper):
                 outcome_prices = json.loads(outcome_prices_str)
             else:
                 outcome_prices = outcome_prices_str
+            
+            # Handle case where outcomePrices is missing or empty, but we still want to see the market
+            if not outcome_prices:
+                outcome_prices = [0, 0] if len(outcomes) == 2 else [0] * len(outcomes)
 
             if not isinstance(outcomes, list) or not isinstance(outcome_prices, list):
                 return None
@@ -55,7 +59,8 @@ class PolymarketScraper(BaseMarketScraper):
             yes_price = float(outcome_prices[yes_index])
             no_price = float(outcome_prices[no_index])
 
-            if yes_price <= 0 or no_price <= 0:
+            # Allow zero prices for analysis
+            if yes_price < 0 or no_price < 0:
                 return None
 
             market_id = market.get("id", "")

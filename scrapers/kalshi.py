@@ -14,47 +14,16 @@ class KalshiScraper(BaseMarketScraper):
 
     def normalize_market(self, market: Dict) -> Dict | None:
         try:
-            event_ticker = market.get("event_ticker", "")
-            title = market.get("title", "")
-            
-            yes_bid_dollars = market.get("yes_bid_dollars")
-            yes_ask_dollars = market.get("yes_ask_dollars")
-            no_bid_dollars = market.get("no_bid_dollars")
-            no_ask_dollars = market.get("no_ask_dollars")
-            
-            if yes_bid_dollars is None or yes_ask_dollars is None or no_bid_dollars is None or no_ask_dollars is None:
-                return None
-            
-            yes_bid = float(yes_bid_dollars)
-            yes_ask = float(yes_ask_dollars)
-            no_bid = float(no_bid_dollars)
-            no_ask = float(no_ask_dollars)
-
-            if yes_bid <= 0 or yes_ask <= 0 or no_bid <= 0 or no_ask <= 0:
-                return None
-
-            yes_price = (yes_bid + yes_ask) / 2
-            no_price = (no_bid + no_ask) / 2
-
-            mve_collection_ticker = market.get("mve_collection_ticker")
-            ticker = market.get("ticker", event_ticker)
-
-            if mve_collection_ticker:
-                url = f"https://kalshi.com/markets/{mve_collection_ticker}"
-            elif event_ticker:
-                url = f"https://kalshi.com/markets/{event_ticker}"
-            elif ticker:
-                url = f"https://kalshi.com/markets/{ticker}"
-            else:
-                url = ""
-
             return {
-                "event": title or event_ticker,
-                "yes_price": yes_price,
-                "no_price": no_price,
-                "ticker": event_ticker,
-                "source": self.name,
-                "url": url,
+                "close_time": market.get("close_time"),
+                "created_time": market.get("created_time"),
+                "early_close_condition": market.get("early_close_condition"),
+                "rules_primary": market.get("rules_primary"),
+                "rules_secondary": market.get("rules_secondary"),
+                "slug": market.get("slug"),
+                "title": market.get("title"),
+                "ticker": market.get("ticker"),
+
             }
         except (KeyError, ValueError, TypeError) as e:
             error_logger.log_error(e, context=f"normalizing {self.name} market")
@@ -85,7 +54,11 @@ class KalshiScraper(BaseMarketScraper):
 
     def fetch_markets(self) -> List[Dict]:
         try:
-            return self._fetch_page(limit=self.target_markets)
+            markets, next_cursor = self._fetch_page(limit=self.target_markets)
+            while len(markets) < self.target_markets:
+                markets, next_cursor = self._fetch_page(cursor=next_cursor, limit=self.target_markets)
+                markets.extend(markets)
+            return markets[:self.target_markets]
         except Exception as e:
             error_logger.log_error(e, context=f"fetching {self.name} markets")
             return []

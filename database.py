@@ -1,12 +1,9 @@
 import sqlite3
-from datetime import datetime, timedelta
-from typing import Dict
-
+from typing import Dict, List, Optional
 from logger import error_logger
 
-
-class ArbitrageDatabase:
-    def __init__(self, db_path: str = "arbitrage.db"):
+class MatchDatabase:
+    def __init__(self, db_path: str = "market_matches.db"):
         self.db_path = db_path
         self._init_database()
 
@@ -14,110 +11,73 @@ class ArbitrageDatabase:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                # Table for storing established matches between Polymarket and Kalshi
                 cursor.execute(
                     """
-                    CREATE TABLE IF NOT EXISTS arbitrage_opportunities (
+                    CREATE TABLE IF NOT EXISTS market_matches (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        event TEXT NOT NULL,
-                        source1 TEXT NOT NULL,
-                        price1 REAL NOT NULL,
-                        source2 TEXT NOT NULL,
-                        price2 REAL NOT NULL,
-                        url1 TEXT,
-                        url2 TEXT,
-                        spread REAL NOT NULL,
+                        polymarket_slug TEXT NOT NULL,
+                        polymarket_event TEXT NOT NULL,
+                        kalshi_ticker TEXT NOT NULL,
+                        kalshi_event TEXT NOT NULL,
+                        confidence_score REAL,
+                        is_verified BOOLEAN DEFAULT 0,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE(event, source1, price1, source2, price2)
+                        UNIQUE(polymarket_slug, kalshi_ticker)
                     )
-                    """
-                )
-                cursor.execute(
-                    """
-                    CREATE INDEX IF NOT EXISTS idx_event_sources
-                    ON arbitrage_opportunities(event, source1, source2)
                     """
                 )
                 conn.commit()
         except sqlite3.Error as e:
             error_logger.log_error(e, context="initializing database")
 
-    def opportunity_exists(self, opportunity: Dict) -> bool:
+    def match_exists(self, poly_slug: str, kalshi_ticker: str) -> bool:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    """
-                    SELECT COUNT(*) FROM arbitrage_opportunities
-                    WHERE event = ? AND source1 = ? AND price1 = ?
-                    AND source2 = ? AND price2 = ?
-                    """,
-                    (
-                        opportunity["event"],
-                        opportunity["source1"],
-                        opportunity["price1"],
-                        opportunity["source2"],
-                        opportunity["price2"],
-                    ),
+                    "SELECT 1 FROM market_matches WHERE polymarket_slug = ? AND kalshi_ticker = ?", 
+                    (poly_slug, kalshi_ticker)
                 )
-                result = cursor.fetchone()
-                return result[0] > 0 if result else False
+                return cursor.fetchone() is not None
         except sqlite3.Error as e:
-            error_logger.log_error(e, context="checking if opportunity exists")
+            error_logger.log_error(e, context="checking match existence")
             return False
 
-    def add_opportunity(self, opportunity: Dict) -> bool:
+    def save_match(self, poly_market: Dict, kalshi_market: Dict, confidence: float) -> bool:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    INSERT OR IGNORE INTO arbitrage_opportunities
-                    (event, source1, price1, source2, price2, url1, url2, spread)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO market_matches 
+                    (polymarket_slug, polymarket_event, kalshi_ticker, kalshi_event, confidence_score)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
                     (
-                        opportunity["event"],
-                        opportunity["source1"],
-                        opportunity["price1"],
-                        opportunity["source2"],
-                        opportunity["price2"],
-                        opportunity.get("url1", ""),
-                        opportunity.get("url2", ""),
-                        opportunity["spread"],
+                        # We need to ensure we pass the slug/ticker. 
+                        # Using URL or ID if specific fields aren't in the normalized dict yet.
+                        poly_market.get("url", "").split("/")[-1], # Extract slug from URL as fallback
+                        poly_market["event"],
+                        kalshi_market.get("ticker", ""),
+                        kalshi_market["event"],
+                        confidence
                     ),
                 )
                 conn.commit()
                 return cursor.rowcount > 0
         except sqlite3.Error as e:
-            error_logger.log_error(e, context="adding opportunity to database")
+            error_logger.log_error(e, context="saving match")
             return False
 
-    def cleanup_old_opportunities(self, days: int = 7) -> int:
-        try:
-            cutoff_date = datetime.now() - timedelta(days=days)
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    DELETE FROM arbitrage_opportunities
-                    WHERE created_at < ?
-                    """,
-                    (cutoff_date.isoformat(),),
-                )
-                conn.commit()
-                return cursor.rowcount
-        except sqlite3.Error as e:
-            error_logger.log_error(e, context="cleaning up old opportunities")
-            return 0
-
-    def get_opportunity_count(self) -> int:
+    def get_verified_matches(self) -> List[Dict]:
+        """Retrieve all matches that have been verified (or all if we treat high confidence as verified)"""
         try:
             with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM arbitrage_opportunities")
-                result = cursor.fetchone()
-                return result[0] if result else 0
+                cursor.execute("SELECT * FROM market_matches ORDER BY created_at DESC")
+                return [dict(row) for row in cursor.fetchall()]
         except sqlite3.Error as e:
-            error_logger.log_error(e, context="getting opportunity count")
-            return 0
-
+            error_logger.log_error(e, context="fetching matches")
+            return []
