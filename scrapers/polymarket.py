@@ -15,64 +15,22 @@ class PolymarketScraper(BaseMarketScraper):
 
     def normalize_market(self, market: Dict) -> Dict | None:
         try:
-            question = market.get("question", "")
-            outcomes_str = market.get("outcomes", "[]")
-            outcome_prices_str = market.get("outcomePrices", "[]")
-
-            if not question:
-                return None
-
-            if isinstance(outcomes_str, str):
-                outcomes = json.loads(outcomes_str)
-            else:
-                outcomes = outcomes_str
-
-            if isinstance(outcome_prices_str, str):
-                outcome_prices = json.loads(outcome_prices_str)
-            else:
-                outcome_prices = outcome_prices_str
-            
-            # Handle case where outcomePrices is missing or empty, but we still want to see the market
-            if not outcome_prices:
-                outcome_prices = [0, 0] if len(outcomes) == 2 else [0] * len(outcomes)
-
-            if not isinstance(outcomes, list) or not isinstance(outcome_prices, list):
-                return None
-
-            if len(outcomes) != len(outcome_prices):
-                return None
-
-            yes_index = None
-            no_index = None
-
-            for i, outcome in enumerate(outcomes):
-                if isinstance(outcome, str):
-                    outcome_upper = outcome.upper()
-                    if outcome_upper == "YES":
-                        yes_index = i
-                    elif outcome_upper == "NO":
-                        no_index = i
-
-            if yes_index is None or no_index is None:
-                return None
-
-            yes_price = float(outcome_prices[yes_index])
-            no_price = float(outcome_prices[no_index])
-
-            # Allow zero prices for analysis
-            if yes_price < 0 or no_price < 0:
-                return None
-
-            market_id = market.get("id", "")
-            slug = market.get("events", {})[0].get("slug", "")
-            url = f"https://polymarket.com/event/{slug}"
-
+            events = market.get("events")
+            if events:
+                events_dict = []
+                for event in events:
+                    events_dict.append({
+                        "id": event.get("id"),
+                        "title": event.get("title"),
+                        "description": event.get("description"),
+                        "end_date": event.get("endDate"),
+                    })
             return {
-                "event": question,
-                "yes_price": yes_price,
-                "no_price": no_price,
-                "source": self.name,
-                "url": url,
+                "id": market.get("id"),
+                "question": market.get("question"),
+                "description": market.get("description"),
+                "slug": market.get("slug"),
+                "events": events_dict,
             }
         except (KeyError, ValueError, TypeError, json.JSONDecodeError) as e:
             error_logger.log_error(e, context=f"normalizing {self.name} market")
@@ -80,7 +38,7 @@ class PolymarketScraper(BaseMarketScraper):
 
     def _fetch_page(self, offset: int = 0, limit: int = 100) -> List[Dict]:
         try:
-            url = f"{self.api_url.split('?')[0]}?limit={limit}&closed=false&offset={offset}"
+            url = f"{self.api_url}&limit={limit}&offset={offset}"
             response = requests.get(url, timeout=self.timeout)
             response.raise_for_status()
             data = response.json()
