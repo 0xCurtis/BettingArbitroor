@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Arbitrage finder bot between Polymarket and Kalshi"
 requires-python = ">=3.11"
 dependencies = [
+    "faiss-cpu>=1.13.0",
+    "ollama>=0.6.1",
     "requests>=2.31.0",
+    "sentence-transformers>=5.1.2",
 ]
 
 [project.optional-dependencies]

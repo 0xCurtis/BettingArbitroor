@@ -37,9 +37,11 @@ uv sync
 
 The bot runs in a continuous loop (defined in `finder.py`):
 
-1.  **Fetch**: It scrapes the latest active markets from Polymarket and Kalshi.
-2.  **Match**: It sends pairs of markets to your local Ollama instance. The `MarketMatcher` class constructs a prompt that includes the event titles, rules, and descriptions. It asks the LLM to verify if they represent the exact same real-world outcome (checking dates, entities, and conditions).
-3.  **Save**: Confirmed matches (confidence > 70%) are saved to a local SQLite database (`market_matches.db`).
+1.  Fetch: It scrapes the latest active markets from Polymarket and Kalshi.
+2.  Match: Two‑stage "retrieval + verification" pipeline in `matcher.MarketMatcher`:
+    - Stage 1 — Retrieval: Find top‑K likely pairs via vector search. If `sentence-transformers` and `faiss-cpu` are present, cosine similarity over embeddings is used. Otherwise, a fast token‑based inverted index prunes candidates (still avoids O(N²)).
+    - Stage 2 — Verification: Run the LLM only on those candidates (default K=5). A greedy pass locks in confirmed matches and skips later checks that involve already‑matched items.
+3.  Save: Confirmed matches (LLM confidence ≥ 0.70) are saved to a local SQLite database (`market_matches.db`).
 
 ## Running the Bot
 
@@ -56,6 +58,28 @@ To run the test script with sample data:
 ```bash
 uv run python test_matcher_demo.py
 ```
+
+## Optional Speedups (Embeddings + FAISS)
+
+The retrieval stage automatically upgrades to vector embeddings if the libraries are present:
+
+- `sentence-transformers`
+- `faiss-cpu`
+
+If these are not installed, the matcher uses a token‑based inverted index that still avoids the O(N²) cross‑product.
+
+Install optional extras (example with uv):
+
+```bash
+uv add sentence-transformers faiss-cpu
+```
+
+LLM setup (Ollama)
+- Install Ollama and pull a small model that fits your system:
+  - `ollama pull llama3.2:3b`  (Meta Llama 3.2 3B; instruction tuned by default)
+  - Or a quantized 8B: `ollama pull llama3:8b-instruct-q4_0`
+- Start the server: `ollama serve`
+- The bot will try Ollama’s HTTP API; if not available, it will fall back to the `ollama` CLI automatically.
 
 ## Roadmap
 

@@ -1,7 +1,8 @@
+# finder.py
 import time
 from typing import List
 
-from config import FETCH_INTERVAL_SECONDS
+from config import FETCH_INTERVAL_SECONDS, OLLAMA_CLI, OLLAMA_MODEL
 from database import MatchDatabase
 from logger import error_logger
 from matcher import MarketMatcher
@@ -12,9 +13,7 @@ from scrapers.polymarket import PolymarketScraper
 
 class MarketMappingBot:
     def __init__(
-        self,
-        scrapers: List[BaseMarketScraper],
-        interval: int = FETCH_INTERVAL_SECONDS
+        self, scrapers: List[BaseMarketScraper], interval: int = FETCH_INTERVAL_SECONDS
     ):
         self.scrapers = scrapers
         self.matcher = MarketMatcher()
@@ -24,18 +23,50 @@ class MarketMappingBot:
     def test_ollama_connection(self) -> None:
         try:
             import requests
-            resp = requests.get(f"{self.matcher.ollama_url}/api/tags")
-            if resp.status_code == 200:
-                print(f"✓ Connected to Ollama ({self.matcher.model})")
+            import subprocess
+
+            ok = False
+            try:
+                resp = requests.get(f"{self.matcher.ollama_url}/api/tags", timeout=3)
+                ok = ok or (resp.status_code == 200)
+            except Exception:
+                pass
+            if not ok:
+                try:
+                    resp = requests.get(
+                        f"{self.matcher.ollama_url}/v1/models", timeout=3
+                    )
+                    ok = ok or (resp.status_code == 200)
+                except Exception:
+                    pass
+            if not ok:
+                try:
+                    subprocess.run(
+                        [OLLAMA_CLI, "--version"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=3,
+                        check=True,
+                    )
+                    ok = True
+                    print(f"✓ Using Ollama CLI fallback (model: {OLLAMA_MODEL})")
+                except Exception:
+                    pass
+            if ok:
+                print(
+                    f"✓ Connected to LLM at {self.matcher.ollama_url} or CLI (model: {self.matcher.model})"
+                )
+                self.matcher.llm_enabled = True
             else:
-                print(f"⚠️  Ollama responded with status {resp.status_code}")
+                print("No LLM endpoint or CLI found. Disabling LLM.")
+                self.matcher.llm_enabled = False
         except Exception:
-            print("❌ Could not connect to Ollama. Is it running?")
-            raise Exception("Could not connect to Ollama")
+            print("LLM preflight failed. Disabling LLM verification.")
+            self.matcher.llm_enabled = False
 
     def run(self) -> None:
         print("Starting Market Mapping Bot...")
-        
+
         self.test_ollama_connection()
 
         while True:
@@ -43,30 +74,33 @@ class MarketMappingBot:
                 print("Fetching market data...", end="", flush=True)
                 poly_markets = []
                 kalshi_markets = []
-                
+
                 for scraper in self.scrapers:
-                    markets : List[dict] = scraper.fetch_markets()
-                    name : str = scraper.get_name()
-                    
-                    # Debugging to ensure we're getting the correct markets in the right format
+                    markets: List[dict] = scraper.fetch_markets()
+                    name: str = scraper.get_name()
                     if name == "Polymarket":
                         poly_markets = markets
                     elif name == "Kalshi":
                         kalshi_markets = markets
                 print(f" Done ({len(poly_markets)} Poly, {len(kalshi_markets)} Kalshi)")
-                
+
                 matches = self.matcher.find_matches(poly_markets, kalshi_markets)
-                
+
                 for poly, kalshi, conf in matches:
                     if self.db.save_match(poly, kalshi, conf):
-                        print(f"🚨 NEW MATCH: {poly['event']} ⚡ {kalshi['event']} (Confidence: {conf:.2f})")
-                
+                        print(
+                            f"NEW MATCH: {poly['event']} ⚡ {kalshi['event']} (Confidence: {conf:.2f})"
+                        )
+
             except KeyboardInterrupt:
                 print("\nStopping bot...")
                 break
             except Exception as e:
                 error_logger.log_error(e, context="main mapping loop")
-            print("Next fetch at", time.strftime("%H:%M:%S", time.localtime(time.time() + self.interval)))
+            print(
+                "Next fetch at",
+                time.strftime("%H:%M:%S", time.localtime(time.time() + self.interval)),
+            )
             time.sleep(self.interval)
 
 
@@ -76,7 +110,7 @@ def main() -> None:
         KalshiScraper(),
     ]
 
-    bot = MarketMappingBot(scrapers, interval=60) # 1 minute for dev
+    bot = MarketMappingBot(scrapers, interval=60)
     bot.run()
 
 
