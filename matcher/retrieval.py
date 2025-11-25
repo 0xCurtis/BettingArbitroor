@@ -4,7 +4,10 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
+
+import faiss
+from sentence_transformers import SentenceTransformer
 
 
 def _default_text_builder(item: Dict) -> str:
@@ -27,7 +30,6 @@ class RetrievalResult:
 
 
 class Retriever:
-
     def __init__(
         self,
         text_builder: Callable[[Dict], str] | None = None,
@@ -43,9 +45,6 @@ class Retriever:
         self._use_embeddings = False
 
         try:
-            from sentence_transformers import SentenceTransformer
-            import faiss
-
             model_candidates = [
                 "all-mpnet-base-v2",
                 "all-MiniLM-L6-v2",
@@ -104,28 +103,24 @@ class Retriever:
         else:
             self._build_token_index(texts)
 
-    def _search_embeddings(
-        self, query_items: Sequence[Dict], k: int
-    ) -> RetrievalResult:
+    def _search_embeddings(self, query_items: Sequence[Dict], k: int) -> RetrievalResult:
         assert (
-            self._embedder is not None
-            and self._faiss is not None
-            and self._faiss_index is not None
+            self._embedder is not None and self._faiss is not None and self._faiss_index is not None
         )
         q_texts = [self.text_builder(it) for it in query_items]
         q_vecs = self._embedder.encode(q_texts)
         self._faiss.normalize_L2(q_vecs)
-        D, I = self._faiss_index.search(q_vecs, k)
+        distances, indices = self._faiss_index.search(q_vecs, k)
         # Convert to lists
         return RetrievalResult(
-            distances=[list(row) for row in D],
-            indices=[list(map(int, row)) for row in I],
+            distances=[list(row) for row in distances],
+            indices=[list(map(int, row)) for row in indices],
         )
 
     def _search_tokens(self, query_items: Sequence[Dict], k: int) -> RetrievalResult:
         # Candidate generation via inverted index union, then cosine over counts
-        results_D: List[List[float]] = []
-        results_I: List[List[int]] = []
+        results_distances: List[List[float]] = []
+        results_indices: List[List[int]] = []
 
         for qi, item in enumerate(query_items):
             q_text = self.text_builder(item)
@@ -155,18 +150,16 @@ class Retriever:
 
             scored.sort(key=lambda x: x[0], reverse=True)
             top = scored[:k]
-            results_D.append([s for s, _ in top])
-            results_I.append([i for _, i in top])
+            results_distances.append([s for s, _ in top])
+            results_indices.append([i for _, i in top])
 
-            while len(results_D[-1]) < k:
-                results_D[-1].append(0.0)
-                results_I[-1].append(-1)
+            while len(results_distances[-1]) < k:
+                results_distances[-1].append(0.0)
+                results_indices[-1].append(-1)
 
-        return RetrievalResult(distances=results_D, indices=results_I)
+        return RetrievalResult(distances=results_distances, indices=results_indices)
 
-    def search(
-        self, query_items: Sequence[Dict], k: Optional[int] = None
-    ) -> RetrievalResult:
+    def search(self, query_items: Sequence[Dict], k: Optional[int] = None) -> RetrievalResult:
         k = k or self.top_k
         if self._use_embeddings:
             return self._search_embeddings(query_items, k)

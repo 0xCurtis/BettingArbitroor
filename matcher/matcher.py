@@ -1,23 +1,24 @@
 # matcher.py
 import json
 import re
-from typing import Dict, List, Tuple, Set
+import subprocess
+from typing import Dict, List, Set, Tuple
 
 import requests
+from retrieval import Retriever
 
-from logger import error_logger
 from config import (
-    TOP_K_CANDIDATES,
-    MIN_SIMILARITY,
-    OLLAMA_URL,
-    OLLAMA_MODEL,
-    OLLAMA_OPTIONS,
-    OLLAMA_CLI,
     AUTO_ACCEPT_THRESHOLD,
     AUTO_REJECT_THRESHOLD,
     JACCARD_MIN_FOR_AUTO_ACCEPT,
+    MIN_SIMILARITY,
+    OLLAMA_CLI,
+    OLLAMA_MODEL,
+    OLLAMA_OPTIONS,
+    OLLAMA_URL,
+    TOP_K_CANDIDATES,
 )
-from retrieval import Retriever
+from logger import error_logger
 
 
 def _normalize_poly_item(raw: Dict) -> Dict:
@@ -95,12 +96,10 @@ class MarketMatcher:
             return "event" in it
 
         poly_norm = [
-            _normalize_poly_item(it) if not is_normalized(it) else it
-            for it in polymarket_data
+            _normalize_poly_item(it) if not is_normalized(it) else it for it in polymarket_data
         ]
         kalshi_norm = [
-            _normalize_kalshi_item(it) if not is_normalized(it) else it
-            for it in kalshi_data
+            _normalize_kalshi_item(it) if not is_normalized(it) else it for it in kalshi_data
         ]
         return poly_norm, kalshi_norm
 
@@ -150,21 +149,20 @@ class MarketMatcher:
             kalshi_item = kalshi_list[k_idx]
 
             if not self._strict_heuristic_check(poly_item, kalshi_item):
-                print(
-                    f"Bouncer blocked: {poly_item.get('event','')[:30]}... vs {kalshi_item.get('event','')[:30]}..."
-                )
+                p_title = poly_item.get("event", "")[:30]
+                k_title = kalshi_item.get("event", "")[:30]
+                print(f"Bouncer blocked: {p_title}... vs {k_title}...")
                 saved_calls += 1
                 continue
 
             if score >= self.auto_accept_threshold:
                 p_txt = f"{poly_item.get('event','')} {poly_item.get('description','')}"
-                k_txt = (
-                    f"{kalshi_item.get('event','')} {kalshi_item.get('description','')}"
-                )
+                k_txt = f"{kalshi_item.get('event','')} {kalshi_item.get('description','')}"
                 jacc = self._calculate_jaccard(p_txt, k_txt)
                 if jacc >= self.jaccard_min_for_auto_accept:
                     print(
-                        f"Fast Lane Match: {poly_item.get('event','')} (Score: {score:.2f}, Jaccard: {jacc:.2f})"
+                        f"Fast Lane Match: {poly_item.get('event','')} "
+                        f"(Score: {score:.2f}, Jaccard: {jacc:.2f})"
                     )
                     matches.append((poly_item, kalshi_item, score))
                     seen_poly.add(p_idx)
@@ -172,9 +170,7 @@ class MarketMatcher:
                     saved_calls += 1
                     continue
 
-            print(
-                f"Judge required (Score: {score:.2f}) for: {poly_item.get('event','')}"
-            )
+            print(f"Judge required (Score: {score:.2f}) for: {poly_item.get('event','')}")
             confidence, reason = self._verify_match_with_llm(poly_item, kalshi_item)
             if (not self.llm_enabled or self._last_llm_failed) and confidence < 0.7:
                 f_conf, f_reason = self._cheap_verify(poly_item, kalshi_item, score)
@@ -183,9 +179,7 @@ class MarketMatcher:
                     print("MATCH (fallback)")
                     print(f"     Poly: {poly_item.get('url', 'No URL')}")
                     print(f"     Kalshi: {kalshi_item.get('url', 'No URL')}")
-                    print(
-                        f"     Vector score: {score:.2f} | Fallback: {confidence:.2f}"
-                    )
+                    print(f"     Vector score: {score:.2f} | Fallback: {confidence:.2f}")
                     print(f"     Reason: {reason}")
 
             if confidence >= 0.7:
@@ -214,27 +208,29 @@ class MarketMatcher:
         kalshi_text = f"Title: {kalshi.get('event','')}\nRules: {kalshi.get('description', 'N/A')}"
 
         user_prompt = f"""
-        Compare these two prediction market events. Your goal is to determine if they are the EXACT SAME betting market.
-        
+        Compare these two prediction market events. Your goal is to determine if they
+        are the EXACT SAME betting market.
+
         === Market A (Polymarket) ===
         {poly_text}
-        
+
         === Market B (Kalshi) ===
         {kalshi_text}
-        
+
         CRITERIA FOR MATCH:
         1. SAME Event (e.g. same election, same game).
         2. SAME Condition (e.g. both ask if X wins, or if X > 100).
         3. SAME Entities (e.g. Bitcoin vs Bitcoin, not Bitcoin vs Ethereum).
         4. SAME Dates/Numbers (if year is 2024 in A and 2025 in B, it is NOT a match).
-        
+
         IMPORTANT:
         - Ignore phrasing differences (e.g. "Will X happen?" vs "If X happens...").
-        - Look for the CORE outcome. If Market A asks "Will X happen?" and Market B says "If X happens, Yes", they are a MATCH.
-        
+        - Look for the CORE outcome. If Market A asks "Will X happen?" and Market B
+          says "If X happens, Yes", they are a MATCH.
+
         If they are different in ANY critical way (dates, teams, logic), return "match": false.
         Be skeptical. Most pairs are NOT matches.
-        
+
         Reply ONLY with a JSON object:
         {{
             "reason": "short explanation of why they match or not",
@@ -242,7 +238,10 @@ class MarketMatcher:
             "confidence": float (0.0 to 1.0)
         }}
         """
-        system_prompt = "You are a strict JSON judge. Respond ONLY with a valid JSON object matching the schema."
+        system_prompt = (
+            "You are a strict JSON judge. Respond ONLY with a valid JSON object "
+            "matching the schema."
+        )
 
         try:
             chat_payload = {
@@ -255,17 +254,13 @@ class MarketMatcher:
                 "stream": False,
                 "options": OLLAMA_OPTIONS,
             }
-            chat_resp = requests.post(
-                f"{self.ollama_url}/api/chat", json=chat_payload, timeout=60
-            )
+            chat_resp = requests.post(f"{self.ollama_url}/api/chat", json=chat_payload, timeout=60)
             if chat_resp.status_code == 404:
                 raise RuntimeError("/api/chat not found; will try /api/generate")
             chat_resp.raise_for_status()
             chat_data = chat_resp.json()
             content_str = (
-                (chat_data.get("message") or {}).get("content")
-                or chat_data.get("response")
-                or ""
+                (chat_data.get("message") or {}).get("content") or chat_data.get("response") or ""
             )
             content = self._parse_llm_json(content_str)
             reason = content.get("reason", "No reason provided")
@@ -325,9 +320,7 @@ class MarketMatcher:
                         timeout=60,
                     )
                     if oai_resp.status_code == 404:
-                        raise RuntimeError(
-                            "/v1/chat/completions not found; trying /v1/completions"
-                        )
+                        raise RuntimeError("/v1/chat/completions not found; trying /v1/completions")
                     oai_resp.raise_for_status()
                     oai_data = oai_resp.json()
                     msg = (oai_data.get("choices") or [{}])[0].get("message") or {}
@@ -344,9 +337,7 @@ class MarketMatcher:
                         return confidence, reason
                     return 0.0, reason
                 except Exception as e3:
-                    error_logger.log_error(
-                        e3, context="LLM verification (/v1/chat/completions)"
-                    )
+                    error_logger.log_error(e3, context="LLM verification (/v1/chat/completions)")
                     try:
                         comp_payload = {
                             "model": self.model,
@@ -374,13 +365,12 @@ class MarketMatcher:
                             return confidence, reason
                         return 0.0, reason
                     except Exception as e4:
-                        error_logger.log_error(
-                            e4, context="LLM verification (/v1/completions)"
-                        )
+                        error_logger.log_error(e4, context="LLM verification (/v1/completions)")
                         try:
-                            import subprocess
-
-                            full_prompt = f"You are a strict JSON judge. Respond ONLY with a JSON object.\n\n{user_prompt}"
+                            base_prompt = (
+                                "You are a strict JSON judge. Respond ONLY with a JSON object."
+                            )
+                            full_prompt = f"{base_prompt}\n\n{user_prompt}"
                             proc = subprocess.run(
                                 [OLLAMA_CLI, "run", self.model],
                                 input=full_prompt.encode("utf-8"),
@@ -399,14 +389,13 @@ class MarketMatcher:
                                 return confidence, reason
                             return 0.0, reason
                         except Exception as e5:
-                            error_logger.log_error(
-                                e5, context="LLM verification (ollama CLI)"
-                            )
+                            error_logger.log_error(e5, context="LLM verification (ollama CLI)")
                             self._llm_error_count += 1
                             self._last_llm_failed = True
                             if self._llm_error_count >= self._llm_error_limit:
                                 print(
-                                    "LLM repeatedly failing (>=3 errors). Disabling LLM for this run."
+                                    "LLM repeatedly failing (>=3 errors). "
+                                    "Disabling LLM for this run."
                                 )
                                 self.llm_enabled = False
                             return 0.0, "Error verifying match with LLM"
@@ -429,9 +418,7 @@ class MarketMatcher:
                 }
         return {"match": False, "confidence": 0.0, "reason": "Empty LLM response"}
 
-    def _cheap_verify(
-        self, poly: Dict, kalshi: Dict, sim_score: float
-    ) -> Tuple[float, str]:
+    def _cheap_verify(self, poly: Dict, kalshi: Dict, sim_score: float) -> Tuple[float, str]:
         p_text_raw = f"{poly.get('event','')} {poly.get('description','')}".strip()
         k_text_raw = f"{kalshi.get('event','')} {kalshi.get('description','')}".strip()
         p_text = p_text_raw.lower()
@@ -450,7 +437,7 @@ class MarketMatcher:
         def toks(s: str) -> List[str]:
             return re.findall(r"[a-z0-9]+", s)
 
-        STOP = {
+        stop = {
             "the",
             "a",
             "an",
@@ -477,8 +464,8 @@ class MarketMatcher:
         }
         p_norm = norm_text(p_text)
         k_norm = norm_text(k_text)
-        pt = [t for t in toks(p_norm) if t not in STOP]
-        kt = [t for t in toks(k_norm) if t not in STOP]
+        pt = [t for t in toks(p_norm) if t not in stop]
+        kt = [t for t in toks(k_norm) if t not in stop]
         pset, kset = set(pt), set(kt)
         inter = pset & kset
         union = pset | kset
@@ -489,7 +476,7 @@ class MarketMatcher:
         if p_years and k_years and p_years.isdisjoint(k_years):
             return 0.0, "Year mismatch"
 
-        KEY = {
+        key = {
             "fed",
             "federal",
             "fedfundsrate",
@@ -501,7 +488,7 @@ class MarketMatcher:
             "cut",
             "raise",
         }
-        domain_overlap = len((pset & kset) & KEY)
+        domain_overlap = len((pset & kset) & key)
 
         if (
             (p_years and k_years and not p_years.isdisjoint(k_years))
@@ -518,11 +505,7 @@ class MarketMatcher:
 
         # Default stricter acceptance
         if jacc >= 0.36 and sim_score >= 0.62:
-            year_boost = (
-                0.05
-                if (p_years and k_years and not p_years.isdisjoint(k_years))
-                else 0.0
-            )
+            year_boost = 0.05 if (p_years and k_years and not p_years.isdisjoint(k_years)) else 0.0
             conf = min(0.9, 0.7 + 0.2 * (sim_score - 0.62) / 0.38 + year_boost)
             return conf, f"Fallback accepted (jacc={jacc:.2f}, sim={sim_score:.2f})"
 

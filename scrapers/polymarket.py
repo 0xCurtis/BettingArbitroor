@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from typing import Dict, List
 
 import requests
@@ -12,19 +13,37 @@ class PolymarketScraper(BaseMarketScraper):
     def __init__(self):
         super().__init__("Polymarket", POLYMARKET_API_URL)
         self.target_markets = TARGET_MARKETS_PER_EXCHANGE
+        self.current_time = datetime.now(timezone.utc)
 
     def normalize_market(self, market: Dict) -> Dict | None:
         try:
             events = market.get("events")
+            events_dict = []
             if events:
-                events_dict = []
+                all_expired = True
                 for event in events:
-                    events_dict.append({
-                        "id": event.get("id"),
-                        "title": event.get("title"),
-                        "description": event.get("description"),
-                        "end_date": event.get("endDate"),
-                    })
+                    end_date = event.get("endDate")
+                    if end_date:
+                        try:
+                            dt_str = end_date.replace("Z", "+00:00")
+                            dt = datetime.fromisoformat(dt_str)
+                            if dt > self.current_time:
+                                all_expired = False
+                        except ValueError:
+                            pass
+
+                    events_dict.append(
+                        {
+                            "id": event.get("id"),
+                            "title": event.get("title"),
+                            "description": event.get("description"),
+                            "end_date": event.get("endDate"),
+                        }
+                    )
+
+                if all_expired and len(events) > 0:
+                    return None
+
             return {
                 "id": market.get("id"),
                 "question": market.get("question"),
@@ -57,26 +76,27 @@ class PolymarketScraper(BaseMarketScraper):
             error_logger.log_error(e, context=f"fetching {self.name} markets page")
             return []
 
-    def fetch_markets(self) -> List[Dict]:
+    def fetch_markets(self, limit: int = None) -> List[Dict]:
+        self.current_time = datetime.now(timezone.utc)
+        target = limit if limit is not None else self.target_markets
         all_markets = []
         offset = 0
-        limit = 100
-        max_iterations = (self.target_markets // limit) + 10
+        page_limit = 100
+        max_iterations = (target // page_limit) + 10
 
         for _ in range(max_iterations):
-            if len(all_markets) >= self.target_markets:
+            if len(all_markets) >= target:
                 break
 
-            page_markets = self._fetch_page(offset=offset, limit=limit)
+            page_markets = self._fetch_page(offset=offset, limit=page_limit)
 
             if not page_markets:
                 break
 
             all_markets.extend(page_markets)
-            offset += limit
+            offset += page_limit
 
-            if len(page_markets) < limit:
+            if len(page_markets) < page_limit:
                 break
 
-        return all_markets[:self.target_markets]
-
+        return all_markets[:target]

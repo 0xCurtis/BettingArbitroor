@@ -13,9 +13,8 @@ class BaseMarketScraper(ABC):
         pass
 
     @abstractmethod
-    def fetch_markets(self) -> List[Dict]:
+    def fetch_markets(self, limit: int = None) -> List[Dict]:
         pass
 
     def get_name(self) -> str:
         return self.name
-

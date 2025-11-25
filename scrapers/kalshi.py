@@ -1,4 +1,5 @@
-from typing import Any, Dict, List
+from datetime import datetime, timezone
+from typing import Dict, List
 
 import requests
 
@@ -11,11 +12,21 @@ class KalshiScraper(BaseMarketScraper):
     def __init__(self):
         super().__init__("Kalshi", KALSHI_API_URL)
         self.target_markets = TARGET_MARKETS_PER_EXCHANGE
+        self.current_time = datetime.now(timezone.utc)
 
     def normalize_market(self, market: Dict) -> Dict | None:
         try:
+            close_time = market.get("close_time")
+            if close_time:
+                # Handle 'Z' if present, though Python 3.11+ supports it directly in fromisoformat
+                # We use replace just to be safe across minor versions if strictly < 3.11
+                dt_str = close_time.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(dt_str)
+                if dt < self.current_time:
+                    return None
+
             return {
-                "close_time": market.get("close_time"),
+                "close_time": close_time,
                 "created_time": market.get("created_time"),
                 "early_close_condition": market.get("early_close_condition"),
                 "rules_primary": market.get("rules_primary"),
@@ -23,7 +34,6 @@ class KalshiScraper(BaseMarketScraper):
                 "slug": market.get("slug"),
                 "title": market.get("title"),
                 "ticker": market.get("ticker"),
-
             }
         except (KeyError, ValueError, TypeError) as e:
             error_logger.log_error(e, context=f"normalizing {self.name} market")
@@ -52,15 +62,16 @@ class KalshiScraper(BaseMarketScraper):
             error_logger.log_error(e, context=f"fetching {self.name} markets page")
             return [], None
 
-    def fetch_markets(self) -> List[Dict]:
+    def fetch_markets(self, limit: int = None) -> List[Dict]:
+        # Update current time before fetching
+        self.current_time = datetime.now(timezone.utc)
+        target = limit if limit is not None else self.target_markets
         try:
-            markets, next_cursor = self._fetch_page(limit=self.target_markets)
-            while len(markets) < self.target_markets:
-                markets, next_cursor = self._fetch_page(cursor=next_cursor, limit=self.target_markets)
-                markets.extend(markets)
-            return markets[:self.target_markets]
+            markets, next_cursor = self._fetch_page(limit=target)
+            while len(markets) < target and next_cursor:
+                new_markets, next_cursor = self._fetch_page(cursor=next_cursor, limit=target)
+                markets.extend(new_markets)
+            return markets[:target]
         except Exception as e:
             error_logger.log_error(e, context=f"fetching {self.name} markets")
             return []
-
-

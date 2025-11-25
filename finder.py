@@ -12,9 +12,7 @@ from scrapers.polymarket import PolymarketScraper
 
 
 class MarketMappingBot:
-    def __init__(
-        self, scrapers: List[BaseMarketScraper], interval: int = FETCH_INTERVAL_SECONDS
-    ):
+    def __init__(self, scrapers: List[BaseMarketScraper], interval: int = FETCH_INTERVAL_SECONDS):
         self.scrapers = scrapers
         self.matcher = MarketMatcher()
         self.interval = interval
@@ -22,8 +20,9 @@ class MarketMappingBot:
 
     def test_ollama_connection(self) -> None:
         try:
-            import requests
             import subprocess
+
+            import requests
 
             ok = False
             try:
@@ -33,9 +32,7 @@ class MarketMappingBot:
                 pass
             if not ok:
                 try:
-                    resp = requests.get(
-                        f"{self.matcher.ollama_url}/v1/models", timeout=3
-                    )
+                    resp = requests.get(f"{self.matcher.ollama_url}/v1/models", timeout=3)
                     ok = ok or (resp.status_code == 200)
                 except Exception:
                     pass
@@ -54,7 +51,8 @@ class MarketMappingBot:
                     pass
             if ok:
                 print(
-                    f"✓ Connected to LLM at {self.matcher.ollama_url} or CLI (model: {self.matcher.model})"
+                    f"✓ Connected to LLM at {self.matcher.ollama_url} or CLI "
+                    f"(model: {self.matcher.model})"
                 )
                 self.matcher.llm_enabled = True
             else:
@@ -89,7 +87,8 @@ class MarketMappingBot:
                 for poly, kalshi, conf in matches:
                     if self.db.save_match(poly, kalshi, conf):
                         print(
-                            f"NEW MATCH: {poly['event']} ⚡ {kalshi['event']} (Confidence: {conf:.2f})"
+                            f"NEW MATCH: {poly['event']} ⚡ {kalshi['event']} "
+                            f"(Confidence: {conf:.2f})"
                         )
 
             except KeyboardInterrupt:

@@ -54,7 +54,10 @@ def test_matcher_demo():
         "close_time": "2070-01-01T15:00:00Z",
         "created_time": "2025-07-18T08:05:49.322772Z",
         "early_close_condition": "This market will close and expire early if the event occurs.",
-        "rules_primary": "If Pierbattista Pizzaballa becomes the first person elected Pope before Jan 1, 2070, then the market resolves to Yes.",
+        "rules_primary": (
+            "If Pierbattista Pizzaballa becomes the first person elected Pope before "
+            "Jan 1, 2070, then the market resolves to Yes."
+        ),
         "rules_secondary": "",
         "slug": None,
         "title": "Who will the next Pope be?",
@@ -135,7 +138,7 @@ def test_matcher_demo():
 
     matches = matcher.find_matches(poly_list, kalshi_list)
 
-    print(f"\n--- Test Complete ---")
+    print("\n--- Test Complete ---")
     print(f"Total Matches Found: {len(matches)} (Expected 2)")
 
 
