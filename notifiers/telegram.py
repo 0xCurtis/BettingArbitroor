@@ -53,4 +53,3 @@ class TelegramNotifier(BaseNotifier):
 
     def notify_summary(self, markets_checked: Dict[str, int], opportunities_found: int) -> None:
         pass
-

@@ -1,6 +1,8 @@
 import sqlite3
-from typing import Dict, List, Optional
+from typing import Dict, List
+
 from logger import error_logger
+
 
 class MatchDatabase:
     def __init__(self, db_path: str = "market_matches.db"):
@@ -36,8 +38,8 @@ class MatchDatabase:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT 1 FROM market_matches WHERE polymarket_slug = ? AND kalshi_ticker = ?", 
-                    (poly_slug, kalshi_ticker)
+                    "SELECT 1 FROM market_matches WHERE polymarket_slug = ? AND kalshi_ticker = ?",
+                    (poly_slug, kalshi_ticker),
                 )
                 return cursor.fetchone() is not None
         except sqlite3.Error as e:
@@ -50,18 +52,24 @@ class MatchDatabase:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    INSERT OR IGNORE INTO market_matches 
-                    (polymarket_slug, polymarket_event, kalshi_ticker, kalshi_event, confidence_score)
+                    INSERT OR IGNORE INTO market_matches
+                    (
+                        polymarket_slug,
+                        polymarket_event,
+                        kalshi_ticker,
+                        kalshi_event,
+                        confidence_score
+                    )
                     VALUES (?, ?, ?, ?, ?)
                     """,
                     (
-                        # We need to ensure we pass the slug/ticker. 
+                        # We need to ensure we pass the slug/ticker.
                         # Using URL or ID if specific fields aren't in the normalized dict yet.
-                        poly_market.get("url", "").split("/")[-1], # Extract slug from URL as fallback
+                        poly_market.get("url", "").split("/")[-1],
                         poly_market["event"],
                         kalshi_market.get("ticker", ""),
                         kalshi_market["event"],
-                        confidence
+                        confidence,
                     ),
                 )
                 conn.commit()
@@ -71,7 +79,8 @@ class MatchDatabase:
             return False
 
     def get_verified_matches(self) -> List[Dict]:
-        """Retrieve all matches that have been verified (or all if we treat high confidence as verified)"""
+        """Retrieve all matches that have been verified
+        (or all if we treat high confidence as verified)"""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row

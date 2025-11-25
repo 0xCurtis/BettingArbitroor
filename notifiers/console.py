@@ -46,4 +46,3 @@ class ConsoleNotifier(BaseNotifier):
             market_list = [f"{count} {name}" for name, count in markets_checked.items()]
             market_counts = ", ".join(market_list)
             print(f"✓ No arbitrage opportunities found (checked {market_counts} markets)")
-

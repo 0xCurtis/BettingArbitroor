@@ -83,4 +83,3 @@ class ErrorLogger:
 
 
 error_logger = ErrorLogger()
-

@@ -6,18 +6,19 @@ FETCH_INTERVAL_SECONDS = 60
 TARGET_MARKETS_PER_EXCHANGE = 500
 
 POLYMARKET_API_URL = "https://gamma-api.polymarket.com/markets?closed=false"
-KALSHI_API_URL = "https://api.elections.kalshi.com/trade-api/v2/markets?status=open&mve_filter=exclude"
+KALSHI_API_URL = (
+    "https://api.elections.kalshi.com/trade-api/v2/markets?status=open&mve_filter=exclude"
+)
 
 TOP_K_CANDIDATES = 2
 MIN_SIMILARITY = 0.35
-# Sandwich filter thresholds
+
 AUTO_ACCEPT_THRESHOLD = 0.88
 AUTO_REJECT_THRESHOLD = 0.60
 JACCARD_MIN_FOR_AUTO_ACCEPT = 0.30
 
 # Ollama settings
 OLLAMA_URL = "http://localhost:11434"
-
 OLLAMA_MODEL = "llama3.2:3b"
 
 # Runtime options sent to Ollama; tune for your hardware
