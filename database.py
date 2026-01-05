@@ -13,7 +13,6 @@ class MatchDatabase:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                # Table for storing established matches between Polymarket and Kalshi
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS market_matches (

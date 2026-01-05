@@ -6,9 +6,6 @@ import re
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-import faiss
-from sentence_transformers import SentenceTransformer
-
 
 def _default_text_builder(item: Dict) -> str:
     parts: List[str] = []
@@ -45,6 +42,9 @@ class Retriever:
         self._use_embeddings = False
 
         try:
+            import faiss
+            from sentence_transformers import SentenceTransformer
+            
             model_candidates = [
                 "all-mpnet-base-v2",
                 "all-MiniLM-L6-v2",

@@ -2,65 +2,36 @@
 import time
 from typing import List
 
-from config import FETCH_INTERVAL_SECONDS, OLLAMA_CLI, OLLAMA_MODEL
+from config import FETCH_INTERVAL_SECONDS, OLLAMA_CLI, OLLAMA_MODEL, OLLAMA_OPTIONS, OLLAMA_URL, OLLAMA_AUTH
 from database import MatchDatabase
 from logger import error_logger
-from matcher import MarketMatcher
 from scrapers.base import BaseMarketScraper
 from scrapers.kalshi import KalshiScraper
 from scrapers.polymarket import PolymarketScraper
-
+import requests
 
 class MarketMappingBot:
     def __init__(self, scrapers: List[BaseMarketScraper], interval: int = FETCH_INTERVAL_SECONDS):
+        from matcher.matcher import MarketMatcher
         self.scrapers = scrapers
         self.matcher = MarketMatcher()
         self.interval = interval
         self.db = MatchDatabase()
 
     def test_ollama_connection(self) -> None:
-        try:
-            import subprocess
-
-            import requests
-
-            ok = False
-            try:
-                resp = requests.get(f"{self.matcher.ollama_url}/api/tags", timeout=3)
-                ok = ok or (resp.status_code == 200)
-            except Exception:
-                pass
-            if not ok:
-                try:
-                    resp = requests.get(f"{self.matcher.ollama_url}/v1/models", timeout=3)
-                    ok = ok or (resp.status_code == 200)
-                except Exception:
-                    pass
-            if not ok:
-                try:
-                    subprocess.run(
-                        [OLLAMA_CLI, "--version"],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        timeout=3,
-                        check=True,
-                    )
-                    ok = True
-                    print(f"✓ Using Ollama CLI fallback (model: {OLLAMA_MODEL})")
-                except Exception:
-                    pass
-            if ok:
-                print(
-                    f"✓ Connected to LLM at {self.matcher.ollama_url} or CLI "
-                    f"(model: {self.matcher.model})"
-                )
-                self.matcher.llm_enabled = True
-            else:
-                print("No LLM endpoint or CLI found. Disabling LLM.")
-                self.matcher.llm_enabled = False
-        except Exception:
-            print("LLM preflight failed. Disabling LLM verification.")
-            self.matcher.llm_enabled = False
+        chat_payload = {
+            "model": OLLAMA_MODEL,
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "What is the capital of France?"}
+            ],
+            "stream": False
+        }
+        headers = {
+            "Authorization": f"Bearer {OLLAMA_AUTH}"
+        }
+        chat_resp = requests.post(f"{OLLAMA_URL}/ollama/v1/generate", json=chat_payload, headers=headers, timeout=60)
+        chat_resp.raise_for_status()
 
     def run(self) -> None:
         print("Starting Market Mapping Bot...")
@@ -104,14 +75,22 @@ class MarketMappingBot:
 
 
 def main() -> None:
-    scrapers = [
-        PolymarketScraper(),
-        KalshiScraper(),
-    ]
-
-    bot = MarketMappingBot(scrapers, interval=60)
-    bot.run()
+    try:
+        print("Creating scrapers...")
+        scrapers = [
+            PolymarketScraper(),
+            KalshiScraper(),
+        ]
+        print("Scrapers created successfully")
+        bot = MarketMappingBot(scrapers, interval=60)
+        bot.run()
+    except Exception as e:
+        print(f"Error in main(): {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 if __name__ == "__main__":
+    print("Starting main...")
     main()

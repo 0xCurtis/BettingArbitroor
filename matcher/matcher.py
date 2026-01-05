@@ -1,11 +1,10 @@
-# matcher.py
 import json
 import re
 import subprocess
 from typing import Dict, List, Set, Tuple
 
 import requests
-from retrieval import Retriever
+from matcher.retrieval import Retriever
 
 from config import (
     AUTO_ACCEPT_THRESHOLD,
@@ -131,8 +130,8 @@ class MarketMatcher:
 
         candidates.sort(key=lambda x: x[0], reverse=True)
 
-        seen_poly: set[int] = set()
-        seen_kalshi: set[int] = set()
+        seen_poly: set[int] = set[int]()
+        seen_kalshi: set[int] = set[int]()
         matches: List[Tuple[Dict, Dict, float]] = []
 
         saved_calls = 0
@@ -251,14 +250,13 @@ class MarketMatcher:
                     {"role": "user", "content": user_prompt},
                 ],
                 "format": "json",
-                "stream": False,
-                "options": OLLAMA_OPTIONS,
+                "stream": False
             }
-            chat_resp = requests.post(f"{self.ollama_url}/api/chat", json=chat_payload, timeout=60)
-            if chat_resp.status_code == 404:
-                raise RuntimeError("/api/chat not found; will try /api/generate")
+            chat_resp = requests.post(f"{self.ollama_url}/ollama/v1/generate", json=chat_payload, timeout=60)
+
             chat_resp.raise_for_status()
             chat_data = chat_resp.json()
+
             content_str = (
                 (chat_data.get("message") or {}).get("content") or chat_data.get("response") or ""
             )
@@ -283,10 +281,9 @@ class MarketMatcher:
                     "prompt": f"{system_prompt}\n\n{user_prompt}",
                     "format": "json",
                     "stream": False,
-                    "options": OLLAMA_OPTIONS,
                 }
                 gen_resp = requests.post(
-                    f"{self.ollama_url}/api/generate", json=gen_payload, timeout=60
+                    f"{self.ollama_url}/ollama/v1/generate", json=gen_payload, timeout=60
                 )
                 gen_resp.raise_for_status()
                 gen_data = gen_resp.json()
@@ -311,11 +308,9 @@ class MarketMatcher:
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt},
                         ],
-                        "temperature": OLLAMA_OPTIONS.get("temperature", 0.1),
-                        "max_tokens": OLLAMA_OPTIONS.get("num_predict", 64),
                     }
                     oai_resp = requests.post(
-                        f"{self.ollama_url}/v1/chat/completions",
+                        f"{self.ollama_url}/ollama/v1/generate",
                         json=oai_payload,
                         timeout=60,
                     )
@@ -342,8 +337,6 @@ class MarketMatcher:
                         comp_payload = {
                             "model": self.model,
                             "prompt": f"{system_prompt}\n\n{user_prompt}",
-                            "temperature": OLLAMA_OPTIONS.get("temperature", 0.1),
-                            "max_tokens": OLLAMA_OPTIONS.get("num_predict", 64),
                         }
                         comp_resp = requests.post(
                             f"{self.ollama_url}/v1/completions",

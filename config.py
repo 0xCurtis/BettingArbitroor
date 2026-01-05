@@ -18,9 +18,9 @@ AUTO_REJECT_THRESHOLD = 0.60
 JACCARD_MIN_FOR_AUTO_ACCEPT = 0.30
 
 # Ollama settings
-OLLAMA_URL = "http://localhost:11434"
-OLLAMA_MODEL = "llama3.2:3b"
-
+OLLAMA_URL = "http://57.131.25.126"
+OLLAMA_MODEL = "llama3"
+OLLAMA_AUTH = "98cdb0a6-ddec-47e8-b454-70cc79e3b3be"
 # Runtime options sent to Ollama; tune for your hardware
 OLLAMA_OPTIONS = {
     "num_ctx": 512,
