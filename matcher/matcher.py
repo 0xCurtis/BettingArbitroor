@@ -4,7 +4,6 @@ import subprocess
 from typing import Dict, List, Set, Tuple
 
 import requests
-from matcher.retrieval import Retriever
 
 from config import (
     AUTO_ACCEPT_THRESHOLD,
@@ -13,11 +12,11 @@ from config import (
     MIN_SIMILARITY,
     OLLAMA_CLI,
     OLLAMA_MODEL,
-    OLLAMA_OPTIONS,
     OLLAMA_URL,
     TOP_K_CANDIDATES,
 )
 from logger import error_logger
+from matcher.retrieval import Retriever
 
 
 def _normalize_poly_item(raw: Dict) -> Dict:
@@ -106,95 +105,112 @@ class MarketMatcher:
         self, polymarket_data: List[Dict], kalshi_data: List[Dict]
     ) -> List[Tuple[Dict, Dict, float]]:
         """
-        Retrieval + Greedy LLM verification pipeline.
-        Returns: List of (PolyDict, KalshiDict, LLM_Confidence)
+        Retrieval + Field-based filtering + LLM verification pipeline.
+        Returns: List of (PolyDict, KalshiDict, Confidence)
         """
         poly_list, kalshi_list = self._normalize_inputs(polymarket_data, kalshi_data)
-
         if not poly_list or not kalshi_list:
             return []
 
         retriever = Retriever(top_k=self.top_k)
         retriever.index(kalshi_list)
-
         retrieval = retriever.search(poly_list, k=self.top_k)
 
         candidates: List[Tuple[float, int, int]] = []
         for p_idx in range(len(poly_list)):
             for rank in range(self.top_k):
-                score = retrieval.distances[p_idx][rank]
                 k_idx = retrieval.indices[p_idx][rank]
-                if k_idx == -1:
-                    continue
-                candidates.append((float(score), p_idx, int(k_idx)))
+                if k_idx != -1:
+                    candidates.append((float(retrieval.distances[p_idx][rank]), p_idx, int(k_idx)))
 
         candidates.sort(key=lambda x: x[0], reverse=True)
 
-        seen_poly: set[int] = set[int]()
-        seen_kalshi: set[int] = set[int]()
+        seen_poly: set[int] = set()
+        seen_kalshi: set[int] = set()
         matches: List[Tuple[Dict, Dict, float]] = []
-
         saved_calls = 0
+
         for score, p_idx, k_idx in candidates:
             if p_idx in seen_poly or k_idx in seen_kalshi:
-                saved_calls += 1
-                continue
-
-            if score < self.auto_reject_threshold:
                 saved_calls += 1
                 continue
 
             poly_item = poly_list[p_idx]
             kalshi_item = kalshi_list[k_idx]
 
-            if not self._strict_heuristic_check(poly_item, kalshi_item):
-                p_title = poly_item.get("event", "")[:30]
-                k_title = kalshi_item.get("event", "")[:30]
-                print(f"Bouncer blocked: {p_title}... vs {k_title}...")
+            if not self._should_consider_match(poly_item, kalshi_item, score):
                 saved_calls += 1
                 continue
 
-            if score >= self.auto_accept_threshold:
-                p_txt = f"{poly_item.get('event','')} {poly_item.get('description','')}"
-                k_txt = f"{kalshi_item.get('event','')} {kalshi_item.get('description','')}"
-                jacc = self._calculate_jaccard(p_txt, k_txt)
-                if jacc >= self.jaccard_min_for_auto_accept:
-                    print(
-                        f"Fast Lane Match: {poly_item.get('event','')} "
-                        f"(Score: {score:.2f}, Jaccard: {jacc:.2f})"
-                    )
-                    matches.append((poly_item, kalshi_item, score))
-                    seen_poly.add(p_idx)
-                    seen_kalshi.add(k_idx)
-                    saved_calls += 1
-                    continue
+            if self._can_auto_accept(poly_item, kalshi_item, score):
+                matches.append((poly_item, kalshi_item, score))
+                seen_poly.add(p_idx)
+                seen_kalshi.add(k_idx)
+                saved_calls += 1
+                continue
 
-            print(f"Judge required (Score: {score:.2f}) for: {poly_item.get('event','')}")
             confidence, reason = self._verify_match_with_llm(poly_item, kalshi_item)
             if (not self.llm_enabled or self._last_llm_failed) and confidence < 0.7:
                 f_conf, f_reason = self._cheap_verify(poly_item, kalshi_item, score)
                 if f_conf >= 0.7:
                     confidence, reason = f_conf, f_reason
-                    print("MATCH (fallback)")
-                    print(f"     Poly: {poly_item.get('url', 'No URL')}")
-                    print(f"     Kalshi: {kalshi_item.get('url', 'No URL')}")
-                    print(f"     Vector score: {score:.2f} | Fallback: {confidence:.2f}")
-                    print(f"     Reason: {reason}")
-
+            print(reason)
             if confidence >= 0.7:
-                print("MATCH FOUND!")
-                print(f"     Poly: {poly_item.get('url', 'No URL')}")
-                print(f"     Kalshi: {kalshi_item.get('url', 'No URL')}")
-                print(f"     Vector score: {score:.2f} | LLM: {confidence:.2f}")
-                print(f"     Reason: {reason}")
                 matches.append((poly_item, kalshi_item, confidence))
                 seen_poly.add(p_idx)
                 seen_kalshi.add(k_idx)
 
         if saved_calls:
-            print(f"Total time saved: Skipped {saved_calls} expensive LLM calls.")
+            print(f"Skipped {saved_calls} LLM calls via filtering.")
 
         return matches
+
+    def _should_consider_match(self, poly: Dict, kalshi: Dict, score: float) -> bool:
+        """Fast field-based filtering to reject obvious non-matches."""
+        if score < self.auto_reject_threshold:
+            return False
+
+        p_text = f"{poly.get('event','')} {poly.get('description','')}".lower()
+        k_text = f"{kalshi.get('event','')} {kalshi.get('description','')}".lower()
+
+        p_years = self._extract_years(p_text)
+        k_years = self._extract_years(k_text)
+        if p_years and k_years and p_years.isdisjoint(k_years):
+            return False
+
+        p_toks = self._normalize_tokens(p_text)
+        k_toks = self._normalize_tokens(k_text)
+
+        critical_groups = [
+            {"bitcoin", "ethereum", "solana"},
+            {"trump", "harris", "biden"},
+            {"republican", "democrat"},
+            {"nfl", "nba", "mlb"},
+        ]
+        for group in critical_groups:
+            p_has = p_toks & group
+            k_has = k_toks & group
+            if p_has and k_has and p_has.isdisjoint(k_has):
+                return False
+
+        return True
+
+    def _can_auto_accept(self, poly: Dict, kalshi: Dict, score: float) -> bool:
+        """Check if match is strong enough to accept without LLM."""
+        if score < self.auto_accept_threshold:
+            return False
+
+        p_txt = f"{poly.get('event','')} {poly.get('description','')}"
+        k_txt = f"{kalshi.get('event','')} {kalshi.get('description','')}"
+        jacc = self._calculate_jaccard(p_txt, k_txt)
+
+        if jacc >= self.jaccard_min_for_auto_accept:
+            print(
+                f"Auto-accept: {poly.get('event','')[:50]} (Score: {score:.2f}, Jacc: {jacc:.2f})"
+            )
+            return True
+
+        return False
 
     def _verify_match_with_llm(self, poly: Dict, kalshi: Dict) -> Tuple[float, str]:
         """
@@ -250,9 +266,11 @@ class MarketMatcher:
                     {"role": "user", "content": user_prompt},
                 ],
                 "format": "json",
-                "stream": False
+                "stream": False,
             }
-            chat_resp = requests.post(f"{self.ollama_url}/ollama/v1/generate", json=chat_payload, timeout=60)
+            chat_resp = requests.post(
+                f"{self.ollama_url}/ollama/v1/generate", json=chat_payload, timeout=60
+            )
 
             chat_resp.raise_for_status()
             chat_data = chat_resp.json()
@@ -506,29 +524,6 @@ class MarketMatcher:
 
     def _extract_years(self, text: str) -> Set[str]:
         return set(re.findall(r"\b(20\d{2})\b", text))
-
-    def _strict_heuristic_check(self, poly: Dict, kalshi: Dict) -> bool:
-        p_text = f"{poly.get('event','')} {poly.get('description','')}".lower()
-        k_text = f"{kalshi.get('event','')} {kalshi.get('description','')}".lower()
-        p_years = self._extract_years(p_text)
-        k_years = self._extract_years(k_text)
-        if p_years and k_years and p_years.isdisjoint(k_years):
-            return False
-        p_toks = self._normalize_tokens(p_text)
-        k_toks = self._normalize_tokens(k_text)
-        critical_groups = [
-            {"bitcoin", "ethereum", "solana"},
-            {"trump", "harris", "biden"},
-            {"republican", "democrat"},
-            {"nfl", "nba", "mlb"},
-        ]
-        for group in critical_groups:
-            p_has = p_toks & group
-            k_has = k_toks & group
-            if p_has and k_has and p_has.isdisjoint(k_has):
-                return False
-
-        return True
 
     def _normalize_tokens(self, text: str) -> Set[str]:
         raw_toks = re.findall(r"[a-z0-9]+", text.lower())

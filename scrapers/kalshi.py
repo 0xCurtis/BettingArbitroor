@@ -39,11 +39,21 @@ class KalshiScraper(BaseMarketScraper):
             error_logger.log_error(e, context=f"normalizing {self.name} market")
             return None
 
-    def _fetch_page(self, cursor: str = None, limit: int = 100) -> tuple[List[Dict], str | None]:
+    def _fetch_page(
+        self,
+        cursor: str = None,
+        limit: int = 100,
+        min_close_ts: int = None,
+        max_close_ts: int = None,
+    ) -> tuple[List[Dict], str | None]:
         try:
             url = f"{self.api_url}?limit={limit}"
             if cursor:
                 url += f"&cursor={cursor}"
+            if min_close_ts is not None:
+                url += f"&min_close_ts={min_close_ts}"
+            if max_close_ts is not None:
+                url += f"&max_close_ts={max_close_ts}"
 
             response = requests.get(url, timeout=self.timeout)
             response.raise_for_status()
@@ -62,14 +72,22 @@ class KalshiScraper(BaseMarketScraper):
             error_logger.log_error(e, context=f"fetching {self.name} markets page")
             return [], None
 
-    def fetch_markets(self, limit: int = None) -> List[Dict]:
-        # Update current time before fetching
+    def fetch_markets(
+        self, limit: int = None, min_close_ts: int = None, max_close_ts: int = None
+    ) -> List[Dict]:
         self.current_time = datetime.now(timezone.utc)
         target = limit if limit is not None else self.target_markets
         try:
-            markets, next_cursor = self._fetch_page(limit=target)
+            markets, next_cursor = self._fetch_page(
+                limit=target, min_close_ts=min_close_ts, max_close_ts=max_close_ts
+            )
             while len(markets) < target and next_cursor:
-                new_markets, next_cursor = self._fetch_page(cursor=next_cursor, limit=target)
+                new_markets, next_cursor = self._fetch_page(
+                    cursor=next_cursor,
+                    limit=target,
+                    min_close_ts=min_close_ts,
+                    max_close_ts=max_close_ts,
+                )
                 markets.extend(new_markets)
             return markets[:target]
         except Exception as e:

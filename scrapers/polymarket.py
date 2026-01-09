@@ -55,26 +55,27 @@ class PolymarketScraper(BaseMarketScraper):
             error_logger.log_error(e, context=f"normalizing {self.name} market")
             return None
 
-    def _fetch_page(self, offset: int = 0, limit: int = 100) -> List[Dict]:
+    def _fetch_page(self, offset: int = 0, limit: int = 100) -> tuple[List[Dict], int]:
         try:
-            url = f"{self.api_url}&limit={limit}&offset={offset}"
+            url = f"{self.api_url}&limit={limit}&offset={offset}&order=endDateIso&ascending=false"
             response = requests.get(url, timeout=self.timeout)
             response.raise_for_status()
             data = response.json()
 
             if not isinstance(data, list):
-                return []
+                return [], 0
 
+            raw_count = len(data)
             markets = []
             for market in data:
                 normalized = self.normalize_market(market)
                 if normalized:
                     markets.append(normalized)
 
-            return markets
+            return markets, raw_count
         except (requests.RequestException, ValueError, KeyError) as e:
             error_logger.log_error(e, context=f"fetching {self.name} markets page")
-            return []
+            return [], 0
 
     def fetch_markets(self, limit: int = None) -> List[Dict]:
         self.current_time = datetime.now(timezone.utc)
@@ -82,21 +83,38 @@ class PolymarketScraper(BaseMarketScraper):
         all_markets = []
         offset = 0
         page_limit = 100
-        max_iterations = (target // page_limit) + 10
+        max_iterations = (target // page_limit) * 3 + 50
+        consecutive_empty_pages = 0
+        max_empty_pages = 10
+        total_raw = 0
 
-        for _ in range(max_iterations):
+        for iteration in range(max_iterations):
             if len(all_markets) >= target:
                 break
 
-            page_markets = self._fetch_page(offset=offset, limit=page_limit)
+            page_markets, raw_count = self._fetch_page(offset=offset, limit=page_limit)
+            total_raw += raw_count
 
-            if not page_markets:
+            if raw_count == 0:
                 break
+
+            if len(page_markets) == 0:
+                consecutive_empty_pages += 1
+                if consecutive_empty_pages >= max_empty_pages:
+                    break
+            else:
+                consecutive_empty_pages = 0
 
             all_markets.extend(page_markets)
             offset += page_limit
 
-            if len(page_markets) < page_limit:
+            if raw_count < page_limit:
                 break
+
+        if target > 0 and len(all_markets) < target:
+            print(
+                f"  Warning: Only fetched {len(all_markets)}/{target} valid Polymarket markets "
+                f"(fetched {total_raw} raw, {total_raw - len(all_markets)} filtered as expired)"
+            )
 
         return all_markets[:target]
