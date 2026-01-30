@@ -9,6 +9,7 @@ from logger import error_logger
 from scrapers.base import BaseMarketScraper
 
 
+# Push test
 class PolymarketScraper(BaseMarketScraper):
     def __init__(self):
         super().__init__("Polymarket", POLYMARKET_API_URL)
