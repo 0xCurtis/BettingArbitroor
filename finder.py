@@ -37,7 +37,7 @@ class MarketMappingBot:
         }
         headers = {"Authorization": f"Bearer {OLLAMA_AUTH}"}
         chat_resp = requests.post(
-            f"{OLLAMA_URL}/ollama/v1/generate", json=chat_payload, headers=headers, timeout=60
+            f"{OLLAMA_URL}/v1/generate", json=chat_payload, headers=headers, timeout=60
         )
         chat_resp.raise_for_status()
 

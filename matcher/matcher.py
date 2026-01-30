@@ -269,7 +269,7 @@ class MarketMatcher:
                 "stream": False,
             }
             chat_resp = requests.post(
-                f"{self.ollama_url}/ollama/v1/generate", json=chat_payload, timeout=60
+                f"{self.ollama_url}/v1/generate", json=chat_payload, timeout=60
             )
 
             chat_resp.raise_for_status()
@@ -301,7 +301,7 @@ class MarketMatcher:
                     "stream": False,
                 }
                 gen_resp = requests.post(
-                    f"{self.ollama_url}/ollama/v1/generate", json=gen_payload, timeout=60
+                    f"{self.ollama_url}/v1/generate", json=gen_payload, timeout=60
                 )
                 gen_resp.raise_for_status()
                 gen_data = gen_resp.json()
@@ -328,7 +328,7 @@ class MarketMatcher:
                         ],
                     }
                     oai_resp = requests.post(
-                        f"{self.ollama_url}/ollama/v1/generate",
+                        f"{self.ollama_url}/v1/generate",
                         json=oai_payload,
                         timeout=60,
                     )

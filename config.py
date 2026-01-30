@@ -20,7 +20,7 @@ JACCARD_MIN_FOR_AUTO_ACCEPT = 0.30
 # Ollama settings
 OLLAMA_URL = "http://57.131.25.126"
 OLLAMA_MODEL = "llama3"
-OLLAMA_AUTH = "98cdb0a6-ddec-47e8-b454-70cc79e3b3be"
+OLLAMA_AUTH = "50696980f50829df8b21509bc53bc34a864b04185ef64e0eaa65ea184170e6c0"
 # Runtime options sent to Ollama; tune for your hardware
 OLLAMA_OPTIONS = {
     "num_ctx": 512,
